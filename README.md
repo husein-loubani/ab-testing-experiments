@@ -48,8 +48,8 @@ Cookie Cats moved its first forced-wait gate from level 30 to level 40.
 │   ├── processed/              <- Cleaned datasets
 │   └── external/               <- Third-party sources (empty)
 ├── notebooks/
-│   ├── 01_fast_food_marketing_ab_test.ipynb
-│   └── 02_cookie_cats_ab_test.ipynb
+│   ├── fast_food_marketing_ab_test.ipynb
+│   └── cookie_cats_ab_test.ipynb
 ├── references/
 │   └── data_dictionary.md
 ├── reports/
