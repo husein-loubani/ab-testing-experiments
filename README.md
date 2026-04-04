@@ -4,6 +4,11 @@
 
 Two end-to-end A/B test analyses with statistical rigour and business-oriented recommendations.
 
+### Interactive Dashboards
+
+- [Fast Food Marketing Dashboard](https://husein-loubani.github.io/ab-testing-experiments/reports/figures/fast_food/dashboard_fast_food.html)
+- [Cookie Cats Dashboard](https://husein-loubani.github.io/ab-testing-experiments/reports/figures/cookie_cats/dashboard_cookie_cats.html)
+
 ---
 
 ## Project Goal
