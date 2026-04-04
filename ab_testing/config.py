@@ -21,6 +21,8 @@ DATA_PROCESSED_DIR: Path = DATA_DIR / "processed"
 
 REPORTS_DIR: Path = PROJECT_ROOT / "reports"
 FIGURES_DIR: Path = REPORTS_DIR / "figures"
+FIGURES_FF_DIR: Path = FIGURES_DIR / "fast_food"
+FIGURES_CC_DIR: Path = FIGURES_DIR / "cookie_cats"
 
 RANDOM_SEED: int = 42
 ALPHA: float = 0.05

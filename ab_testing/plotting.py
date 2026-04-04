@@ -1,7 +1,8 @@
 """
 plotting.py
-All reusable Matplotlib visualisation functions for the A/B Testing project.
-Every function returns a Figure without calling plt.show().
+All reusable visualisation functions for the A/B Testing project.
+- Matplotlib: individual static charts (saved as PNG)
+- Plotly: interactive executive dashboards (saved as HTML)
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from ab_testing.config import FIGURES_DIR
+from ab_testing.config import FIGURES_FF_DIR, FIGURES_CC_DIR
 from ab_testing.io import ensure_parent_dir
 
 
@@ -39,6 +40,10 @@ def _ordered_categories(values: pd.Series, order: list[Any] | None) -> list[Any]
         return list(order)
     return sorted(values.dropna().unique().tolist())
 
+
+# ---------------------------------------------------------------------------
+# Static Matplotlib plots — Fast Food
+# ---------------------------------------------------------------------------
 
 def plot_group_mean_bar(
     df: pd.DataFrame,
@@ -73,7 +78,7 @@ def plot_group_mean_bar(
     for i, m in enumerate(means):
         ax.text(i, m, f"{m:.2f}", ha="center", va="bottom", fontsize=9)
 
-    save_fig(fig, FIGURES_DIR / out_name)
+    save_fig(fig, FIGURES_FF_DIR / out_name)
     return fig
 
 
@@ -109,7 +114,7 @@ def plot_weekly_trend(
     ax.set_title(title)
     ax.legend(title=group_col)
 
-    save_fig(fig, FIGURES_DIR / out_name)
+    save_fig(fig, FIGURES_FF_DIR / out_name)
     return fig
 
 
@@ -122,9 +127,11 @@ def plot_distribution_violin(
     xlabel: str,
     ylabel: str,
     out_name: str,
+    figures_dir: Path | None = None,
     order: list[Any] | None = None,
 ) -> plt.Figure:
     cats = _ordered_categories(df[group_col], order)
+    dest = figures_dir or FIGURES_FF_DIR
 
     data: list[np.ndarray] = []
     ns: list[int] = []
@@ -147,7 +154,7 @@ def plot_distribution_violin(
         if np.isfinite(m):
             ax.text(i, m, f"{m:.2f}", ha="center", va="bottom", fontsize=9)
 
-    save_fig(fig, FIGURES_DIR / out_name)
+    save_fig(fig, dest / out_name)
     return fig
 
 
@@ -188,12 +195,12 @@ def plot_retention_rate_bar(
         if np.isfinite(r):
             ax.text(i, r, f"{r:.1%}", ha="center", va="bottom", fontsize=9)
 
-    save_fig(fig, FIGURES_DIR / out_name)
+    save_fig(fig, FIGURES_CC_DIR / out_name)
     return fig
 
 
 # ---------------------------------------------------------------------------
-# Dashboard: Fast Food
+# Interactive Plotly Dashboard — Fast Food
 # ---------------------------------------------------------------------------
 
 def dashboard_fast_food(
@@ -203,98 +210,189 @@ def dashboard_fast_food(
     promotion_col: str = "Promotion",
     sales_col: str = "SalesInThousands",
     week_col: str = "week",
-    out_name: str = "dashboard_fast_food.png",
-) -> plt.Figure:
-    """Four-panel executive dashboard for the Fast Food A/B test."""
-    fig, axes = plt.subplots(2, 2, figsize=(16, 11))
-    fig.suptitle("Fast Food Marketing Campaign — A/B Test Dashboard", fontsize=16, y=0.98)
+    out_name: str = "dashboard_fast_food.html",
+) -> "plotly.graph_objects.Figure":
+    """Interactive dark-themed executive dashboard for the Fast Food A/B test."""
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
 
-    colors = {1: "#2980b9", 2: "#e67e22", 3: "#27ae60"}
     promos = sorted(store_level[promotion_col].unique())
+    colors = {1: "#7c3aed", 2: "#3b82f6", 3: "#10b981"}
+    color_list = [colors.get(p, "#888") for p in promos]
 
-    # --- Panel 1: Weekly sales trend by promotion ---
-    ax = axes[0, 0]
+    # ---- KPI calculations ----
+    n_stores = store_level.shape[0]
+    n_weeks = int(df_clean[week_col].nunique())
+    best_promo = store_level.groupby(promotion_col)["avg_sales"].mean().idxmax()
+    best_mean = store_level.groupby(promotion_col)["avg_sales"].mean().max()
+    overall_mean = store_level["avg_sales"].mean()
+
+    # ---- Weekly trend data ----
     weekly = (
         df_clean.groupby([week_col, promotion_col], as_index=False)
         .agg(mean_sales=(sales_col, "mean"))
         .sort_values([promotion_col, week_col])
     )
+
+    # ---- Store-level means ----
+    promo_stats = store_level.groupby(promotion_col).agg(
+        mean_sales=("avg_sales", "mean"),
+        std_sales=("avg_sales", "std"),
+        n=("avg_sales", "size"),
+    ).reindex(promos)
+
+    # ---- Build subplots ----
+    fig = make_subplots(
+        rows=3, cols=2,
+        row_heights=[0.08, 0.46, 0.46],
+        column_widths=[0.5, 0.5],
+        specs=[
+            [{"colspan": 2, "type": "domain"}, None],
+            [{"type": "xy"}, {"type": "xy"}],
+            [{"type": "xy"}, {"type": "table"}],
+        ],
+        vertical_spacing=0.08,
+        horizontal_spacing=0.08,
+        subplot_titles=[
+            "",
+            "Weekly Sales Trend by Promotion",
+            "Store-Level Average Weekly Sales",
+            "Sales Distribution by Promotion",
+            "Pairwise Lift Summary",
+        ],
+    )
+
+    # ---- Row 1: KPI cards as annotation (no trace needed) ----
+    # We use invisible scatter to occupy the domain, then add annotations
+    fig.add_trace(
+        go.Scatter(x=[None], y=[None], showlegend=False),
+        row=2, col=1,
+    )
+
+    # ---- Row 2, Col 1: Weekly trend (line chart) ----
     for p in promos:
         sub = weekly[weekly[promotion_col] == p]
-        ax.plot(sub[week_col], sub["mean_sales"], marker="o", color=colors[p],
-                label=f"Promo {p}", linewidth=2, markersize=7)
-        for x_val, y_val in zip(sub[week_col], sub["mean_sales"]):
-            ax.text(x_val, y_val + 0.15, f"{y_val:.1f}", ha="center", fontsize=7.5)
-    ax.set_xlabel("Week")
-    ax.set_ylabel("Avg Sales (thousands $)")
-    ax.set_title("Weekly Sales Trend by Promotion")
-    ax.legend(fontsize=9)
-    ax.set_xticks(sorted(df_clean[week_col].unique()))
+        fig.add_trace(
+            go.Scatter(
+                x=sub[week_col],
+                y=sub["mean_sales"],
+                mode="lines+markers+text",
+                name=f"Promo {p}",
+                text=[f"{v:.1f}" for v in sub["mean_sales"]],
+                textposition="top center",
+                textfont=dict(size=10),
+                line=dict(color=colors.get(p, "#888"), width=3),
+                marker=dict(size=8),
+            ),
+            row=2, col=1,
+        )
+    fig.update_xaxes(title_text="Week", row=2, col=1, dtick=1)
+    fig.update_yaxes(title_text="Avg Sales ($k)", row=2, col=1)
 
-    # --- Panel 2: Store-level mean bar chart ---
-    ax = axes[0, 1]
-    means = store_level.groupby(promotion_col)["avg_sales"].mean().reindex(promos)
-    ns = store_level.groupby(promotion_col)["avg_sales"].size().reindex(promos)
-    bar_colors = [colors[p] for p in promos]
-    ax.bar(range(len(promos)), means.values, color=bar_colors, edgecolor="white")
-    ax.set_xticks(range(len(promos)))
-    ax.set_xticklabels([f"Promo {p}\nn={ns[p]}" for p in promos])
-    ax.set_ylabel("Avg Weekly Sales (thousands $)")
-    ax.set_title("Store-Level Average Weekly Sales")
-    for i, m in enumerate(means.values):
-        ax.text(i, m + 0.05, f"{m:.2f}", ha="center", fontsize=9, fontweight="bold")
-
-    # --- Panel 3: Violin distribution ---
-    ax = axes[1, 0]
-    data = [store_level.loc[store_level[promotion_col] == p, "avg_sales"].values for p in promos]
-    parts = ax.violinplot(data, showmeans=True, showmedians=False, showextrema=True)
-    for i, pc in enumerate(parts.get("bodies", [])):
-        pc.set_facecolor(bar_colors[i])
-        pc.set_alpha(0.7)
-    ax.set_xticks(range(1, len(promos) + 1))
-    ax.set_xticklabels([f"Promo {p}" for p in promos])
-    ax.set_ylabel("Avg Weekly Sales (thousands $)")
-    ax.set_title("Sales Distribution by Promotion")
-    group_means = [np.mean(d) for d in data]
-    for i, m in enumerate(group_means, start=1):
-        ax.text(i, m, f"{m:.2f}", ha="center", va="bottom", fontsize=9)
-
-    # --- Panel 4: Pairwise lift summary ---
-    ax = axes[1, 1]
-    ax.axis("off")
-    pairs = [(1, 2), (1, 3), (2, 3)]
-    table_data = [["Comparison", "Lift ($k)", "Lift (%)"]]
-    for a, b in pairs:
-        ma = means[a]
-        mb = means[b]
-        lift_k = ma - mb
-        lift_pct = lift_k / mb * 100
-        table_data.append([f"Promo {a} vs {b}", f"{lift_k:+.2f}", f"{lift_pct:+.1f}%"])
-
-    table = ax.table(
-        cellText=table_data[1:],
-        colLabels=table_data[0],
-        loc="center",
-        cellLoc="center",
+    # ---- Row 2, Col 2: Bar chart (store-level mean) ----
+    fig.add_trace(
+        go.Bar(
+            x=[f"Promo {p}" for p in promos],
+            y=promo_stats["mean_sales"].values,
+            marker_color=color_list,
+            text=[f"${v:.2f}k<br>n={promo_stats.loc[p, 'n']}" for p, v in zip(promos, promo_stats["mean_sales"])],
+            textposition="outside",
+            textfont=dict(size=11),
+            showlegend=False,
+        ),
+        row=2, col=2,
     )
-    table.auto_set_font_size(False)
-    table.set_fontsize(11)
-    table.scale(1, 1.8)
-    for (row, col), cell in table.get_celld().items():
-        if row == 0:
-            cell.set_facecolor("#34495e")
-            cell.set_text_props(color="white", fontweight="bold")
-        else:
-            cell.set_facecolor("#ecf0f1" if row % 2 == 0 else "white")
-    ax.set_title("Pairwise Lift Summary", pad=20)
+    fig.update_yaxes(title_text="Avg Weekly Sales ($k)", row=2, col=2)
 
-    fig.tight_layout(rect=[0, 0, 1, 0.95])
-    save_fig(fig, FIGURES_DIR / out_name)
+    # ---- Row 3, Col 1: Box plot (distribution) ----
+    for p in promos:
+        vals = store_level.loc[store_level[promotion_col] == p, "avg_sales"]
+        fig.add_trace(
+            go.Box(
+                y=vals,
+                name=f"Promo {p}",
+                marker_color=colors.get(p, "#888"),
+                boxmean=True,
+                showlegend=False,
+            ),
+            row=3, col=1,
+        )
+    fig.update_yaxes(title_text="Avg Weekly Sales ($k)", row=3, col=1)
+
+    # ---- Row 3, Col 2: Pairwise lift table ----
+    pairs = [(1, 2), (1, 3), (2, 3)]
+    means_dict = promo_stats["mean_sales"].to_dict()
+    comparisons, lifts_k, lifts_pct = [], [], []
+    for a, b in pairs:
+        ma, mb = means_dict[a], means_dict[b]
+        lift = ma - mb
+        lift_p = lift / mb * 100
+        comparisons.append(f"Promo {a} vs {b}")
+        lifts_k.append(f"{lift:+.2f}")
+        lifts_pct.append(f"{lift_p:+.1f}%")
+
+    fig.add_trace(
+        go.Table(
+            header=dict(
+                values=["<b>Comparison</b>", "<b>Lift ($k)</b>", "<b>Lift (%)</b>"],
+                fill_color="#1e1b4b",
+                font=dict(color="white", size=13),
+                align="center",
+                height=35,
+            ),
+            cells=dict(
+                values=[comparisons, lifts_k, lifts_pct],
+                fill_color=[["#2d2a5e"] * len(comparisons)],
+                font=dict(color="white", size=12),
+                align="center",
+                height=30,
+            ),
+        ),
+        row=3, col=2,
+    )
+
+    # ---- Layout: dark theme matching the reference ----
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="#0f0e1a",
+        plot_bgcolor="#1a1933",
+        font=dict(family="Inter, system-ui, sans-serif", color="#e2e8f0", size=13),
+        title=dict(
+            text=(
+                "<b>Fast Food Marketing Campaign — A/B Test Dashboard</b>"
+                f"<br><span style='font-size:13px; color:#94a3b8'>"
+                f"Stores: {n_stores} | Weeks: {n_weeks} | "
+                f"Best Promotion: {best_promo} (${best_mean:.2f}k avg) | "
+                f"Overall Mean: ${overall_mean:.2f}k</span>"
+            ),
+            font=dict(size=18, color="#a78bfa"),
+            x=0.5,
+            xanchor="center",
+        ),
+        height=950,
+        margin=dict(t=100, b=40, l=60, r=60),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=12),
+        ),
+    )
+
+    # Style subplot titles
+    for ann in fig.layout.annotations:
+        ann.font = dict(size=14, color="#c4b5fd")
+
+    out_path = FIGURES_FF_DIR / out_name
+    ensure_parent_dir(out_path)
+    fig.write_html(str(out_path), include_plotlyjs=True)
     return fig
 
 
 # ---------------------------------------------------------------------------
-# Dashboard: Cookie Cats
+# Interactive Plotly Dashboard — Cookie Cats
 # ---------------------------------------------------------------------------
 
 def dashboard_cookie_cats(
@@ -304,116 +402,229 @@ def dashboard_cookie_cats(
     ret1_col: str = "retention_1",
     ret7_col: str = "retention_7",
     rounds_col: str = "sum_gamerounds",
-    out_name: str = "dashboard_cookie_cats.png",
-) -> plt.Figure:
-    """Four-panel executive dashboard for the Cookie Cats A/B test."""
-    fig, axes = plt.subplots(2, 2, figsize=(16, 11))
-    fig.suptitle("Cookie Cats — A/B Test Dashboard (gate_30 vs gate_40)", fontsize=16, y=0.98)
+    out_name: str = "dashboard_cookie_cats.html",
+) -> "plotly.graph_objects.Figure":
+    """Interactive dark-themed executive dashboard for the Cookie Cats A/B test."""
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
 
-    colors_map = {"gate_30": "#2980b9", "gate_40": "#c0392b"}
     groups = ["gate_30", "gate_40"]
+    colors_map = {"gate_30": "#7c3aed", "gate_40": "#3b82f6"}
 
-    # --- Panel 1: Retention comparison (Day 1 + Day 7 grouped bar) ---
-    ax = axes[0, 0]
+    # ---- KPI calculations ----
+    n_players = len(df)
+    ret7_overall = df[ret7_col].mean()
+    ret1_overall = df[ret1_col].mean()
+    avg_rounds = df[rounds_col].mean()
+
     ret_data = df.groupby(version_col).agg(
-        day1=(ret1_col, "mean"), day7=(ret7_col, "mean"), n=(ret1_col, "size")
+        day1=(ret1_col, "mean"),
+        day7=(ret7_col, "mean"),
+        avg_rounds=(rounds_col, "mean"),
+        median_rounds=(rounds_col, "median"),
+        n=(ret1_col, "size"),
     ).reindex(groups)
 
-    x_pos = np.arange(2)
-    width = 0.35
-    bars1 = ax.bar(x_pos - width / 2, ret_data["day1"], width, label="Day 1",
-                   color="#3498db", edgecolor="white")
-    bars7 = ax.bar(x_pos + width / 2, ret_data["day7"], width, label="Day 7",
-                   color="#e74c3c", edgecolor="white")
-    ax.set_xticks(x_pos)
-    ax.set_xticklabels([f"{g}\nn={ret_data.loc[g, 'n']:,}" for g in groups])
-    ax.set_ylabel("Retention Rate")
-    ax.set_title("Retention: Day 1 vs Day 7")
-    ax.set_ylim(0, 0.6)
-    ax.legend(fontsize=9)
-    for bars in [bars1, bars7]:
-        for bar in bars:
-            h = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width() / 2, h + 0.005,
-                    f"{h:.1%}", ha="center", fontsize=8.5, fontweight="bold")
+    # ---- Build subplots ----
+    fig = make_subplots(
+        rows=3, cols=2,
+        row_heights=[0.33, 0.33, 0.34],
+        column_widths=[0.5, 0.5],
+        specs=[
+            [{"type": "xy"}, {"type": "table"}],
+            [{"type": "xy"}, {"type": "xy"}],
+            [{"type": "xy"}, {"type": "table"}],
+        ],
+        vertical_spacing=0.09,
+        horizontal_spacing=0.08,
+        subplot_titles=[
+            "Retention: Day 1 vs Day 7",
+            "Treatment Effect Summary",
+            "Engagement Distribution (log scale)",
+            "Retention Funnel",
+            "",
+            "Group Statistics",
+        ],
+    )
 
-    # --- Panel 2: Treatment effect summary table ---
-    ax = axes[0, 1]
-    ax.axis("off")
-    metrics = [
-        ("Day 1 retention", ret1_col),
-        ("Day 7 retention", ret7_col),
-    ]
-    table_data = [["Metric", "gate_30", "gate_40", "Diff (pp)", "Rel. Diff"]]
-    for label, col in metrics:
+    # ---- Row 1, Col 1: Grouped bar chart (retention Day 1 + Day 7) ----
+    x_labels = [f"{g} (n={ret_data.loc[g, 'n']:,.0f})" for g in groups]
+
+    fig.add_trace(
+        go.Bar(
+            x=x_labels,
+            y=ret_data["day1"].values,
+            name="Day 1 Retention",
+            marker_color="#3b82f6",
+            text=[f"{v:.1%}" for v in ret_data["day1"]],
+            textposition="outside",
+            textfont=dict(size=11),
+        ),
+        row=1, col=1,
+    )
+    fig.add_trace(
+        go.Bar(
+            x=x_labels,
+            y=ret_data["day7"].values,
+            name="Day 7 Retention",
+            marker_color="#ef4444",
+            text=[f"{v:.1%}" for v in ret_data["day7"]],
+            textposition="outside",
+            textfont=dict(size=11),
+        ),
+        row=1, col=1,
+    )
+    fig.update_yaxes(title_text="Retention Rate", range=[0, 0.6], row=1, col=1)
+
+    # ---- Row 1, Col 2: Treatment effect table ----
+    metrics_names = ["Day 1 Retention", "Day 7 Retention", "Avg Game Rounds"]
+    gate30_vals, gate40_vals, diffs_abs, diffs_rel = [], [], [], []
+
+    for col, fmt in [(ret1_col, ".2%"), (ret7_col, ".2%"), (rounds_col, ".1f")]:
         r30 = df[df[version_col] == "gate_30"][col].mean()
         r40 = df[df[version_col] == "gate_40"][col].mean()
-        abs_d = (r30 - r40) * 100
-        rel_d = (r30 - r40) / r40 * 100 if r40 > 0 else 0
-        table_data.append([label, f"{r30:.2%}", f"{r40:.2%}", f"{abs_d:+.2f}", f"{rel_d:+.1f}%"])
+        abs_d = r30 - r40
+        rel_d = abs_d / r40 * 100 if r40 != 0 else 0
 
-    m30 = df[df[version_col] == "gate_30"][rounds_col].mean()
-    m40 = df[df[version_col] == "gate_40"][rounds_col].mean()
-    abs_e = m30 - m40
-    rel_e = abs_e / m40 * 100 if m40 > 0 else 0
-    table_data.append(["Avg rounds", f"{m30:.1f}", f"{m40:.1f}", f"{abs_e:+.1f}", f"{rel_e:+.1f}%"])
-
-    table = ax.table(
-        cellText=table_data[1:],
-        colLabels=table_data[0],
-        loc="center",
-        cellLoc="center",
-    )
-    table.auto_set_font_size(False)
-    table.set_fontsize(10)
-    table.scale(1, 1.8)
-    for (row, col), cell in table.get_celld().items():
-        if row == 0:
-            cell.set_facecolor("#34495e")
-            cell.set_text_props(color="white", fontweight="bold")
+        if "%" in fmt:
+            gate30_vals.append(f"{r30:{fmt}}")
+            gate40_vals.append(f"{r40:{fmt}}")
+            diffs_abs.append(f"{abs_d * 100:+.2f} pp")
         else:
-            cell.set_facecolor("#ecf0f1" if row % 2 == 0 else "white")
-    ax.set_title("Treatment Effect Summary", pad=20)
+            gate30_vals.append(f"{r30:{fmt}}")
+            gate40_vals.append(f"{r40:{fmt}}")
+            diffs_abs.append(f"{abs_d:+.1f}")
+        diffs_rel.append(f"{rel_d:+.1f}%")
 
-    # --- Panel 3: Engagement violin (log scale) ---
-    ax = axes[1, 0]
-    data = [np.log1p(df.loc[df[version_col] == g, rounds_col].values) for g in groups]
-    parts = ax.violinplot(data, showmeans=True, showmedians=False, showextrema=True)
-    for i, pc in enumerate(parts.get("bodies", [])):
-        pc.set_facecolor(list(colors_map.values())[i])
-        pc.set_alpha(0.7)
-    ax.set_xticks([1, 2])
-    ax.set_xticklabels(groups)
-    ax.set_ylabel("log1p(gamerounds)")
-    ax.set_title("Engagement Distribution (log scale)")
-    for i, d in enumerate(data, start=1):
-        m = np.mean(d)
-        ax.text(i, m, f"{m:.2f}", ha="center", va="bottom", fontsize=9)
+    fig.add_trace(
+        go.Table(
+            header=dict(
+                values=["<b>Metric</b>", "<b>gate_30</b>", "<b>gate_40</b>", "<b>Diff</b>", "<b>Rel. Diff</b>"],
+                fill_color="#1e1b4b",
+                font=dict(color="white", size=12),
+                align="center",
+                height=32,
+            ),
+            cells=dict(
+                values=[metrics_names, gate30_vals, gate40_vals, diffs_abs, diffs_rel],
+                fill_color=[["#2d2a5e"] * len(metrics_names)],
+                font=dict(color="white", size=11),
+                align="center",
+                height=28,
+            ),
+        ),
+        row=1, col=2,
+    )
 
-    # --- Panel 4: Retention funnel ---
-    ax = axes[1, 1]
-    for i, g in enumerate(groups):
+    # ---- Row 2, Col 1: Engagement violin (log scale) ----
+    for g in groups:
+        vals = np.log1p(df.loc[df[version_col] == g, rounds_col].values)
+        fig.add_trace(
+            go.Violin(
+                y=vals,
+                name=g,
+                box_visible=True,
+                meanline_visible=True,
+                fillcolor=colors_map[g],
+                opacity=0.7,
+                line_color="white",
+                showlegend=False,
+            ),
+            row=2, col=1,
+        )
+    fig.update_yaxes(title_text="log1p(gamerounds)", row=2, col=1)
+
+    # ---- Row 2, Col 2: Retention funnel (horizontal bar) ----
+    for g in groups:
         sub = df[df[version_col] == g]
         n_total = len(sub)
         n_d1 = int(sub[ret1_col].sum())
         n_d7 = int(sub[ret7_col].sum())
         rates = [1.0, n_d1 / n_total, n_d7 / n_total]
 
-        offset = -0.2 + i * 0.4
-        bars = ax.barh(
-            [j + offset for j in range(3)], rates,
-            height=0.35, color=colors_map[g], alpha=0.8, label=g,
+        fig.add_trace(
+            go.Bar(
+                y=["Install", "Day 1", "Day 7"],
+                x=rates,
+                orientation="h",
+                name=g,
+                marker_color=colors_map[g],
+                opacity=0.8,
+                text=[f"{r:.1%}" for r in rates],
+                textposition="outside",
+                textfont=dict(size=10),
+                showlegend=False,
+            ),
+            row=2, col=2,
         )
-        for j, (bar, r) in enumerate(zip(bars, rates)):
-            ax.text(r + 0.01, j + offset, f"{r:.1%}", va="center", fontsize=8.5)
+    fig.update_xaxes(title_text="Rate", range=[0, 1.2], row=2, col=2)
+    fig.update_layout(barmode="group")
 
-    ax.set_yticks(range(3))
-    ax.set_yticklabels(["Install", "Day 1 Retained", "Day 7 Retained"])
-    ax.set_xlabel("Rate")
-    ax.set_title("Retention Funnel")
-    ax.legend(fontsize=9)
-    ax.set_xlim(0, 1.15)
+    # ---- Row 3, Col 2: Group statistics table ----
+    stat_groups = groups
+    stat_n = [f"{ret_data.loc[g, 'n']:,.0f}" for g in stat_groups]
+    stat_ret1 = [f"{ret_data.loc[g, 'day1']:.2%}" for g in stat_groups]
+    stat_ret7 = [f"{ret_data.loc[g, 'day7']:.2%}" for g in stat_groups]
+    stat_avg = [f"{ret_data.loc[g, 'avg_rounds']:.1f}" for g in stat_groups]
+    stat_med = [f"{ret_data.loc[g, 'median_rounds']:.0f}" for g in stat_groups]
 
-    fig.tight_layout(rect=[0, 0, 1, 0.95])
-    save_fig(fig, FIGURES_DIR / out_name)
+    fig.add_trace(
+        go.Table(
+            header=dict(
+                values=["<b>Group</b>", "<b>N</b>", "<b>Day 1 Ret.</b>", "<b>Day 7 Ret.</b>",
+                        "<b>Avg Rounds</b>", "<b>Med Rounds</b>"],
+                fill_color="#1e1b4b",
+                font=dict(color="white", size=12),
+                align="center",
+                height=32,
+            ),
+            cells=dict(
+                values=[stat_groups, stat_n, stat_ret1, stat_ret7, stat_avg, stat_med],
+                fill_color=[["#2d2a5e"] * len(stat_groups)],
+                font=dict(color="white", size=11),
+                align="center",
+                height=28,
+            ),
+        ),
+        row=3, col=2,
+    )
+
+    # ---- Layout: dark theme ----
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="#0f0e1a",
+        plot_bgcolor="#1a1933",
+        font=dict(family="Inter, system-ui, sans-serif", color="#e2e8f0", size=13),
+        title=dict(
+            text=(
+                "<b>Cookie Cats — A/B Test Dashboard (gate_30 vs gate_40)</b>"
+                f"<br><span style='font-size:13px; color:#94a3b8'>"
+                f"Players: {n_players:,} | "
+                f"Day 1 Retention: {ret1_overall:.1%} | "
+                f"Day 7 Retention: {ret7_overall:.1%} | "
+                f"Avg Rounds: {avg_rounds:.1f}</span>"
+            ),
+            font=dict(size=18, color="#a78bfa"),
+            x=0.5,
+            xanchor="center",
+        ),
+        height=1050,
+        margin=dict(t=100, b=40, l=60, r=60),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=12),
+        ),
+    )
+
+    # Style subplot titles
+    for ann in fig.layout.annotations:
+        ann.font = dict(size=14, color="#c4b5fd")
+
+    out_path = FIGURES_CC_DIR / out_name
+    ensure_parent_dir(out_path)
+    fig.write_html(str(out_path), include_plotlyjs=True)
     return fig
