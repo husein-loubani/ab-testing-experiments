@@ -42,7 +42,7 @@ def _ordered_categories(values: pd.Series, order: list[Any] | None) -> list[Any]
 
 
 # ---------------------------------------------------------------------------
-# Static Matplotlib plots — Fast Food
+# Static Matplotlib plots: Fast Food
 # ---------------------------------------------------------------------------
 
 def plot_group_mean_bar(
@@ -200,7 +200,7 @@ def plot_retention_rate_bar(
 
 
 # ---------------------------------------------------------------------------
-# Interactive Plotly Dashboard — Fast Food
+# Interactive Plotly Dashboard: Fast Food
 # ---------------------------------------------------------------------------
 
 def dashboard_fast_food(
@@ -359,7 +359,7 @@ def dashboard_fast_food(
         font=dict(family="Inter, system-ui, sans-serif", color="#e2e8f0", size=13),
         title=dict(
             text=(
-                "<b>Fast Food Marketing Campaign — A/B Test Dashboard</b>"
+                "<b>Fast Food Marketing Campaign: A/B Test Dashboard</b>"
                 f"<br><span style='font-size:13px; color:#94a3b8'>"
                 f"Stores: {n_stores} | Weeks: {n_weeks} | "
                 f"Best Promotion: {best_promo} (${best_mean:.2f}k avg) | "
@@ -392,7 +392,7 @@ def dashboard_fast_food(
 
 
 # ---------------------------------------------------------------------------
-# Interactive Plotly Dashboard — Cookie Cats
+# Interactive Plotly Dashboard: Cookie Cats
 # ---------------------------------------------------------------------------
 
 def dashboard_cookie_cats(
@@ -597,7 +597,7 @@ def dashboard_cookie_cats(
         font=dict(family="Inter, system-ui, sans-serif", color="#e2e8f0", size=13),
         title=dict(
             text=(
-                "<b>Cookie Cats — A/B Test Dashboard (gate_30 vs gate_40)</b>"
+                "<b>Cookie Cats: A/B Test Dashboard (gate_30 vs gate_40)</b>"
                 f"<br><span style='font-size:13px; color:#94a3b8'>"
                 f"Players: {n_players:,} | "
                 f"Day 1 Retention: {ret1_overall:.1%} | "
