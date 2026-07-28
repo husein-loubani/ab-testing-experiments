@@ -6,18 +6,18 @@ Manager-facing report builders for A/B test results.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Literal
+from typing import Literal, Optional
 
 import numpy as np
 import pandas as pd
 
-from ab_testing.config import ALPHA, RANDOM_SEED, FAST_FOOD
+from ab_testing.config import ALPHA, FAST_FOOD, RANDOM_SEED
 from ab_testing.stats import (
     GlobalTestResult,
-    choose_global_test,
-    welch_ttest_mean,
     adjust_pvalues,
     bootstrap_ci_mean_diff,
+    choose_global_test,
+    welch_ttest_mean,
 )
 
 

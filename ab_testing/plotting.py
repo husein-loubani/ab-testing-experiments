@@ -8,15 +8,17 @@ All reusable visualisation functions for the A/B Testing project.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
-from ab_testing.config import FIGURES_FF_DIR, FIGURES_CC_DIR
+if TYPE_CHECKING:
+    import plotly.graph_objects
+
+from ab_testing.config import FIGURES_CC_DIR, FIGURES_FF_DIR
 from ab_testing.io import ensure_parent_dir
-
 
 ACCENT_A = "#2980b9"
 ACCENT_B = "#c0392b"
